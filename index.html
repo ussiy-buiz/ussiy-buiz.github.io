@@ -1,26 +1,11 @@
-<!doctype html>
-<html lang="ja">
-<head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#101b2b"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="description" content="CYPHONIC研究のための手入力式AI利用枠ダッシュボード">
-  <link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icons/apple-touch-icon.png"><link rel="icon" href="icons/icon.svg"><link rel="stylesheet" href="style.css">
-  <title>CYPHONIC AI Usage Dashboard</title>
-</head>
-<body>
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#101b2b"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="description" content="Work/Codex利用枠の自動同期・分析ダッシュボード"><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon.svg"><link rel="stylesheet" href="style.css"><title>CYPHONIC AI Usage v2</title></head><body>
 <main>
-  <header><span class="eyebrow">CYPHONIC / RESEARCH TOOLS</span><h1>AI Usage Dashboard</h1><p>利用枠を見渡して、研究の次の一歩を。</p><span id="storage-status" role="status"></span></header>
-  <section class="panel decision"><span class="eyebrow">研究用の運用判定 · 推定</span><h2 id="decision">記録待ち</h2><p id="reason">残量とリセット予定を入力してください。</p></section>
-  <div class="grid">
-    <section class="panel"><h2>5時間枠</h2><div class="amount" id="five-value">—</div><progress id="five-bar" max="100" value="0" aria-label="5時間枠の残量"></progress><p id="five-reset">リセット予定：未設定</p><button type="button" data-reset="five">リセットを記録</button><p class="muted">保存済みリセット <strong id="five-count">0</strong> 回</p></section>
-    <section class="panel"><h2>週間枠</h2><div class="amount" id="week-value">—</div><progress id="week-bar" max="100" value="0" aria-label="週間枠の残量"></progress><p id="week-reset">リセット予定：未設定</p><button type="button" data-reset="week">リセットを記録</button><p class="muted">保存済みリセット <strong id="week-count">0</strong> 回</p></section>
-  </div>
-  <section class="panel"><h2>使用量を記録</h2><p class="muted">ChatGPTの表示を手入力してください。認証情報・Cookieにはアクセスしません。</p>
-    <form id="entry-form"><div class="grid"><label>5時間枠の残量 (%)<input id="five-input" type="number" min="0" max="100" step="0.1" required></label><label>週間枠の残量 (%)<input id="week-input" type="number" min="0" max="100" step="0.1" required></label><label>5時間枠の次回リセット<input id="five-date" type="datetime-local" required></label><label>週間枠の次回リセット<input id="week-date" type="datetime-local" required></label></div><button class="primary" type="submit">現在の使用量を保存</button></form>
-  </section>
-  <section class="panel"><h2>週間枠の推移</h2><p class="muted">過去7日間の残量 (%) · 上昇・リセットで線を区切ります</p><svg id="chart" viewBox="0 0 640 220" role="img" aria-label="過去7日間の週間枠の残量推移"></svg><p id="forecast">枯渇予測：記録待ち</p><p class="muted">現在の週間枠サイクルの記録から平均消費速度を計算。最低2件の、時間を空けた記録が必要です。将来の使用量は保証しません。</p></section>
-  <section class="panel"><h2>使用量履歴</h2><div class="table-wrap"><table><thead><tr><th>記録日時</th><th>5時間残量</th><th>週間残量</th><th>記録種別</th></tr></thead><tbody id="history"></tbody></table></div><p id="history-count" class="muted"></p></section>
-  <section class="panel"><h2>データ管理</h2><div class="actions"><button id="csv">CSV出力</button><button id="backup">JSONバックアップ</button><label class="file-label">JSONを復元<input id="restore" type="file" accept="application/json,.json"></label></div><p class="muted">データはこの端末のlocalStorageに保存されます。Safariとホーム画面アプリで保存領域が異なる場合があります。復元は現在のデータを置き換えます。</p></section>
-  <footer>iPhone：Safariの共有メニュー →「ホーム画面に追加」。<br>初回はオンラインで開いてください。以降はオフラインでも利用できます。</footer>
-</main><script src="app.js" defer></script>
-</body></html>
+<header><div><span class="eyebrow">CYPHONIC / AUTO SYNC</span><h1>AI Usage Dashboard v2</h1><p>PCで取得したWork/Codex利用枠をiPhoneへ自動同期・分析。</p></div><span id="sync-badge">未同期</span></header>
+<section class="panel decision"><span class="eyebrow">研究用の運用判定</span><h2 id="decision">データ待ち</h2><p id="reason">同期設定後、PCでChatGPTのUsage画面を開いてください。</p></section>
+<div class="grid"><section class="panel"><h2>5時間枠</h2><div class="amount" id="five-value">—</div><progress id="five-bar" max="100" value="0"></progress><p id="five-reset">リセット：—</p></section><section class="panel"><h2>週間枠</h2><div class="amount" id="week-value">—</div><progress id="week-bar" max="100" value="0"></progress><p id="week-reset">リセット：—</p></section></div>
+<section class="panel"><div class="row between"><div><h2>自動同期</h2><p class="muted">Chrome/Edge拡張と同じ同期API URL・同期キーを設定します。</p></div><button id="sync-now">今すぐ同期</button></div><div class="grid"><label>同期API URL<input id="endpoint" placeholder="https://xxxx.workers.dev"></label><label>同期キー<input id="sync-key" type="password" placeholder="拡張機能と同じキー"></label></div><div class="actions"><button id="save-settings" class="primary">設定を保存</button><button id="generate-key">同期キーを生成</button></div><p id="sync-status" class="muted"></p></section>
+<section class="panel"><h2>週間枠の推移</h2><svg id="chart" viewBox="0 0 640 220" role="img"></svg><p id="forecast">枯渇予測：データ待ち</p><div class="metrics"><div><span>24h消費</span><strong id="burn24">—</strong></div><div><span>平均消費</span><strong id="burnRate">—</strong></div><div><span>取得精度</span><strong id="confidence">—</strong></div></div></section>
+<section class="panel"><h2>履歴</h2><div class="table-wrap"><table><thead><tr><th>取得日時</th><th>5時間</th><th>週間</th><th>精度</th></tr></thead><tbody id="history"></tbody></table></div></section>
+<section class="panel"><h2>データ管理</h2><div class="actions"><button id="csv">CSV出力</button><button id="backup">JSONバックアップ</button></div><p class="muted">同期キーはこの端末のlocalStorageにのみ保存されます。ChatGPTのCookieや認証情報は保存しません。</p></section>
+<footer>PC: ChatGPT → Settings → Usage を開くと拡張機能が自動取得。iPhone: このページをホーム画面に追加して閲覧。</footer>
+</main><script src="app.js" defer></script></body></html>
