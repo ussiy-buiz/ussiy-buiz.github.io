@@ -1,11 +1,35 @@
-<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#101b2b"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="description" content="Work/Codex利用枠の自動同期・分析ダッシュボード"><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon.svg"><link rel="stylesheet" href="style.css"><title>CYPHONIC AI Usage v2</title></head><body>
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#101b2b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="PC不要でChatGPT/Codex利用枠を確認するクラウド同期ダッシュボード">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg">
+  <link rel="stylesheet" href="style.css">
+  <title>AI Usage Dashboard</title>
+</head>
+<body>
 <main>
-<header><div><span class="eyebrow">CYPHONIC / AUTO SYNC</span><h1>AI Usage Dashboard v2</h1><p>PCで取得したWork/Codex利用枠をiPhoneへ自動同期・分析。</p></div><span id="sync-badge">未同期</span></header>
-<section class="panel decision"><span class="eyebrow">研究用の運用判定</span><h2 id="decision">データ待ち</h2><p id="reason">同期設定後、PCでChatGPTのUsage画面を開いてください。</p></section>
-<div class="grid"><section class="panel"><h2>5時間枠</h2><div class="amount" id="five-value">—</div><progress id="five-bar" max="100" value="0"></progress><p id="five-reset">リセット：—</p></section><section class="panel"><h2>週間枠</h2><div class="amount" id="week-value">—</div><progress id="week-bar" max="100" value="0"></progress><p id="week-reset">リセット：—</p></section></div>
-<section class="panel"><div class="row between"><div><h2>自動同期</h2><p class="muted">Chrome/Edge拡張と同じ同期API URL・同期キーを設定します。</p></div><button id="sync-now">今すぐ同期</button></div><div class="grid"><label>同期API URL<input id="endpoint" placeholder="https://xxxx.workers.dev"></label><label>同期キー<input id="sync-key" type="password" placeholder="拡張機能と同じキー"></label></div><div class="actions"><button id="save-settings" class="primary">設定を保存</button><button id="generate-key">同期キーを生成</button></div><p id="sync-status" class="muted"></p></section>
-<section class="panel"><h2>週間枠の推移</h2><svg id="chart" viewBox="0 0 640 220" role="img"></svg><p id="forecast">枯渇予測：データ待ち</p><div class="metrics"><div><span>24h消費</span><strong id="burn24">—</strong></div><div><span>平均消費</span><strong id="burnRate">—</strong></div><div><span>取得精度</span><strong id="confidence">—</strong></div></div></section>
-<section class="panel"><h2>履歴</h2><div class="table-wrap"><table><thead><tr><th>取得日時</th><th>5時間</th><th>週間</th><th>精度</th></tr></thead><tbody id="history"></tbody></table></div></section>
-<section class="panel"><h2>データ管理</h2><div class="actions"><button id="csv">CSV出力</button><button id="backup">JSONバックアップ</button></div><p class="muted">同期キーはこの端末のlocalStorageにのみ保存されます。ChatGPTのCookieや認証情報は保存しません。</p></section>
-<footer>PC: ChatGPT → Settings → Usage を開くと拡張機能が自動取得。iPhone: このページをホーム画面に追加して閲覧。</footer>
-</main><script src="app.js" defer></script></body></html>
+  <header><div><span class="eyebrow">CLOUD / PC FREE</span><h1>AI Usage Dashboard</h1><p>PCを閉じていても、クラウドが利用枠を自動取得。</p></div><span id="sync-badge">確認中</span></header>
+
+  <section class="panel decision"><span class="eyebrow">現在の運用判定</span><h2 id="decision">データ待ち</h2><p id="reason">クラウド同期の初期設定を行ってください。</p></section>
+
+  <div class="grid"><section class="panel"><h2>5時間枠</h2><div class="amount" id="five-value">—</div><progress id="five-bar" max="100" value="0"></progress><p id="five-reset">リセット：—</p></section><section class="panel"><h2>週間枠</h2><div class="amount" id="week-value">—</div><progress id="week-bar" max="100" value="0"></progress><p id="week-reset">リセット：—</p></section></div>
+
+  <section class="panel"><div class="row between"><div><h2>クラウド自動同期</h2><p class="muted">GitHub Actionsが約5分おきに取得。PC・Chrome拡張は不要です。</p></div><button id="sync-now">今すぐ表示更新</button></div><div class="metrics"><div><span>Usage取得時刻</span><strong id="last-captured">—</strong></div><div><span>取得方式</span><strong>Cloud</strong></div><div><span>PC</span><strong>不要</strong></div></div><label class="key-label">表示キー<input id="view-key" type="password" autocomplete="off" placeholder="USAGE_VIEW_KEY"></label><div class="actions"><button id="save-key" class="primary">表示キーを保存</button></div><p id="sync-status" class="muted"></p></section>
+
+  <section class="panel"><h2>初回セットアップ</h2><p class="muted">一度だけGitHub Actions Secretsを2つ登録し、ChatGPTのデバイス認証を行います。ChatGPTのCookieやパスワードは保存しません。</p><div class="actions"><button id="generate-setup">セットアップキーを生成</button><a class="button-link" href="https://github.com/ussiy-buiz/ussiy-buiz.github.io/settings/secrets/actions" target="_blank" rel="noopener">GitHub Secretsを開く</a><a class="button-link" href="https://github.com/ussiy-buiz/ussiy-buiz.github.io/actions/workflows/usage-sync.yml" target="_blank" rel="noopener">Cloud Usage Syncを開く</a></div><div id="setup-result" hidden><div class="secret-row"><label>USAGE_AUTH_KEY<input id="generated-auth-key" readonly></label><button data-copy="generated-auth-key">コピー</button></div><div class="secret-row"><label>USAGE_VIEW_KEY<input id="generated-view-key" readonly></label><button data-copy="generated-view-key">コピー</button></div><p class="muted">① 2つを同名のRepository Secretとして登録 → ② Actionsの「Cloud Usage Sync」で <strong>Run workflow → bootstrap</strong> → ③ 実行中のSummaryに出るワンタイムコードでChatGPT認証 → ④ このページで表示キーを保存。AUTHキーはこのページに保存しません。</p></div></section>
+
+  <section class="panel"><h2>週間枠の推移</h2><svg id="chart" viewBox="0 0 640 220" role="img"></svg><p id="forecast">枯渇予測：記録不足</p><div class="metrics"><div><span>24h消費</span><strong id="burn24">—</strong></div><div><span>平均消費</span><strong id="burnRate">—</strong></div><div><span>取得精度</span><strong id="confidence">—</strong></div></div></section>
+
+  <section class="panel"><h2>履歴</h2><div class="table-wrap"><table><thead><tr><th>取得日時</th><th>5時間</th><th>週間</th><th>取得元</th></tr></thead><tbody id="history"></tbody></table></div></section>
+
+  <footer>クラウド取得はGitHub Actionsの実行状況により数分遅れることがあります。認証情報は暗号化された状態ファイルとして保存され、表示用の鍵とは別の鍵で保護されます。</footer>
+</main>
+<script src="app.js" defer></script>
+</body>
+</html>
