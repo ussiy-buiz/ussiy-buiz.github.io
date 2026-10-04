@@ -1,0 +1,74 @@
+name: Cloud Usage Sync
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'bootstrap = 初回ChatGPT認証 / sync = 今すぐ取得'
+        required: true
+        default: sync
+        type: choice
+        options:
+          - sync
+          - bootstrap
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cloud-usage-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: true
+          fetch-depth: 1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Restore encrypted state
+        run: |
+          if git fetch origin usage-cloud-state:refs/remotes/origin/usage-cloud-state 2>/dev/null; then
+            git show origin/usage-cloud-state:private-auth.enc > private-auth.enc 2>/dev/null || true
+            git show origin/usage-cloud-state:usage-data.enc > usage-data.enc 2>/dev/null || true
+          fi
+      - name: Fetch ChatGPT usage
+        env:
+          USAGE_AUTH_KEY: ${{ secrets.USAGE_AUTH_KEY }}
+          USAGE_VIEW_KEY: ${{ secrets.USAGE_VIEW_KEY }}
+          MODE: ${{ github.event_name == 'schedule' && 'sync' || inputs.mode }}
+        run: node scripts/usage-sync.mjs "$MODE"
+      - name: Persist encrypted state branch
+        run: |
+          if [ ! -f private-auth.enc ] && [ ! -f usage-data.enc ]; then
+            echo "Cloud sync is not configured yet."
+            exit 0
+          fi
+          mkdir -p /tmp/usage-cloud-state
+          [ -f private-auth.enc ] && cp private-auth.enc /tmp/usage-cloud-state/
+          [ -f usage-data.enc ] && cp usage-data.enc /tmp/usage-cloud-state/
+          rm -f private-auth.enc usage-data.enc
+          if git show-ref --verify --quiet refs/remotes/origin/usage-cloud-state; then
+            git switch --force-create usage-cloud-state origin/usage-cloud-state
+          else
+            git switch --orphan usage-cloud-state
+          fi
+          git rm -rf . >/dev/null 2>&1 || true
+          git clean -fdx >/dev/null 2>&1 || true
+          cp /tmp/usage-cloud-state/* .
+          git add private-auth.enc usage-data.enc 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No state change to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update cloud usage snapshot"
+          git push origin HEAD:usage-cloud-state
