@@ -6,6 +6,7 @@ const CACHE = 'cyphonic-cloud-usage-cache-v3';
 const STATE_BASE = 'https://raw.githubusercontent.com/ussiy-buiz/ussiy-buiz.github.io/usage-cloud-state';
 const DATA_URL = `${STATE_BASE}/usage-data.enc`;
 const BOOTSTRAP_URL = `${STATE_BASE}/bootstrap.enc`;
+const BOOTSTRAP_API = 'https://api.github.com/repos/ussiy-buiz/ussiy-buiz.github.io/contents/bootstrap.enc?ref=usage-cloud-state';
 let entries = [];
 
 const settings = () => { try { return JSON.parse(localStorage.getItem(SETTINGS) || '{}'); } catch { return {}; } };
@@ -109,6 +110,30 @@ function b64urlBytes(value) {
   return Uint8Array.from(binary, c => c.charCodeAt(0));
 }
 
+async function fetchStateText(url) {
+  const response = await fetch(`${url}?t=${Date.now()}`, { cache: 'no-store' });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const text = await response.text();
+  return text.trim() ? text : null;
+}
+
+async function fetchBootstrapText() {
+  const response = await fetch(BOOTSTRAP_API, {
+    cache: 'no-store',
+    headers: {
+      accept: 'application/vnd.github+json',
+      'x-github-api-version': '2022-11-28',
+    },
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`GitHub API HTTP ${response.status}`);
+  const payload = await response.json();
+  if (!payload?.content) return null;
+  const normalized = payload.content.replace(/\s+/g, '');
+  return new TextDecoder().decode(b64urlBytes(normalized.replace(/\+/g, '-').replace(/\//g, '_')));
+}
+
 async function decryptEnvelope(raw, secret, purpose = 'usage-view') {
   const envelope = JSON.parse(raw);
   if (envelope?.v !== 1 || envelope?.alg !== 'A256GCM') throw new Error('未対応の暗号データです');
@@ -127,13 +152,17 @@ async function refreshBootstrapState(secret) {
   const code = $('bootstrap-code');
   const link = $('bootstrap-link');
   try {
-    const response = await fetch(`${BOOTSTRAP_URL}?t=${Date.now()}`, { cache: 'no-store' });
-    if (response.status === 404) {
+    const raw = await fetchBootstrapText();
+    if (!raw) {
       panel.hidden = true;
       return false;
     }
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const pending = await decryptEnvelope(await response.text(), secret, 'usage-bootstrap');
+    let pending;
+    try {
+      pending = await decryptEnvelope(raw, secret, 'usage-bootstrap');
+    } catch {
+      throw new Error('表示キーがbootstrap作成時のUSAGE_VIEW_KEYと一致していません');
+    }
     const expires = Date.parse(pending.expiresAt || '');
     if (!pending.userCode || !pending.verificationUrl || !Number.isFinite(expires)) {
       throw new Error('認証データが不完全です');
@@ -148,6 +177,8 @@ async function refreshBootstrapState(secret) {
     code.textContent = '取得失敗';
     $('bootstrap-expiry').textContent = '—';
     link.removeAttribute('href');
+    const detail = $('bootstrap-error');
+    if (detail) detail.textContent = error.message;
     return false;
   }
 }
@@ -164,14 +195,13 @@ async function sync() {
 
   try {
     $('sync-status').textContent = 'クラウドデータ確認中…';
-    const response = await fetch(`${DATA_URL}?t=${Date.now()}`, { cache: 'no-store' });
-    if (response.status === 404) {
+    const raw = await fetchStateText(DATA_URL);
+    if (!raw) {
       $('sync-badge').textContent = '認証待ち';
-      $('sync-status').textContent = '初回認証中です。認証コードが表示されている場合はChatGPTで承認してください。';
+      $('sync-status').textContent = 'まだUsageデータはありません。初回ChatGPT認証を完了してください。';
       return;
     }
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await decryptEnvelope(await response.text(), secret);
+    const data = await decryptEnvelope(raw, secret);
     entries = Array.isArray(data.entries) ? data.entries : [];
     localStorage.setItem(CACHE, JSON.stringify(entries));
     $('sync-badge').textContent = 'クラウド同期';
