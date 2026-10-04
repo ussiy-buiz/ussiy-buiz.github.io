@@ -3,7 +3,9 @@
 const $ = id => document.getElementById(id);
 const SETTINGS = 'cyphonic-cloud-usage-v3';
 const CACHE = 'cyphonic-cloud-usage-cache-v3';
-const DATA_URL = 'https://raw.githubusercontent.com/ussiy-buiz/ussiy-buiz.github.io/usage-cloud-state/usage-data.enc';
+const STATE_BASE = 'https://raw.githubusercontent.com/ussiy-buiz/ussiy-buiz.github.io/usage-cloud-state';
+const DATA_URL = `${STATE_BASE}/usage-data.enc`;
+const BOOTSTRAP_URL = `${STATE_BASE}/bootstrap.enc`;
 let entries = [];
 
 const settings = () => { try { return JSON.parse(localStorage.getItem(SETTINGS) || '{}'); } catch { return {}; } };
@@ -107,10 +109,10 @@ function b64urlBytes(value) {
   return Uint8Array.from(binary, c => c.charCodeAt(0));
 }
 
-async function decryptEnvelope(raw, secret) {
+async function decryptEnvelope(raw, secret, purpose = 'usage-view') {
   const envelope = JSON.parse(raw);
   if (envelope?.v !== 1 || envelope?.alg !== 'A256GCM') throw new Error('未対応の暗号データです');
-  const material = new TextEncoder().encode(`usage-view\0${secret}`);
+  const material = new TextEncoder().encode(`${purpose}\0${secret}`);
   const digest = await crypto.subtle.digest('SHA-256', material);
   const key = await crypto.subtle.importKey('raw', digest, 'AES-GCM', false, ['decrypt']);
   const data = b64urlBytes(envelope.data), tag = b64urlBytes(envelope.tag);
@@ -120,6 +122,36 @@ async function decryptEnvelope(raw, secret) {
   return JSON.parse(new TextDecoder().decode(plain));
 }
 
+async function refreshBootstrapState(secret) {
+  const panel = $('bootstrap-status');
+  const code = $('bootstrap-code');
+  const link = $('bootstrap-link');
+  try {
+    const response = await fetch(`${BOOTSTRAP_URL}?t=${Date.now()}`, { cache: 'no-store' });
+    if (response.status === 404) {
+      panel.hidden = true;
+      return false;
+    }
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const pending = await decryptEnvelope(await response.text(), secret, 'usage-bootstrap');
+    const expires = Date.parse(pending.expiresAt || '');
+    if (!pending.userCode || !pending.verificationUrl || !Number.isFinite(expires)) {
+      throw new Error('認証データが不完全です');
+    }
+    code.textContent = pending.userCode;
+    link.href = pending.verificationUrl;
+    $('bootstrap-expiry').textContent = new Date(expires).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+    panel.hidden = false;
+    return true;
+  } catch (error) {
+    panel.hidden = false;
+    code.textContent = '取得失敗';
+    $('bootstrap-expiry').textContent = '—';
+    link.removeAttribute('href');
+    return false;
+  }
+}
+
 async function sync() {
   const secret = settings().viewKey || '';
   if (!secret) {
@@ -127,10 +159,17 @@ async function sync() {
     $('sync-status').textContent = '表示キーを保存すると、PCなしのクラウド同期データを読めます。';
     return;
   }
+
+  await refreshBootstrapState(secret);
+
   try {
     $('sync-status').textContent = 'クラウドデータ確認中…';
     const response = await fetch(`${DATA_URL}?t=${Date.now()}`, { cache: 'no-store' });
-    if (response.status === 404) throw new Error('初回ChatGPT認証がまだ完了していません');
+    if (response.status === 404) {
+      $('sync-badge').textContent = '認証待ち';
+      $('sync-status').textContent = '初回認証中です。認証コードが表示されている場合はChatGPTで承認してください。';
+      return;
+    }
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await decryptEnvelope(await response.text(), secret);
     entries = Array.isArray(data.entries) ? data.entries : [];
@@ -163,6 +202,7 @@ $('generate-setup').onclick = () => {
   $('generated-auth-key').value = authKey;
   $('generated-view-key').value = viewKey;
   $('view-key').value = viewKey;
+  saveSettings({ viewKey });
   $('setup-result').hidden = false;
 };
 for (const button of document.querySelectorAll('[data-copy]')) {
