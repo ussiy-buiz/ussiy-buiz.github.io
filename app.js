@@ -6,6 +6,7 @@ const CACHE = 'cyphonic-cloud-usage-cache-v3';
 const STATE_BASE = 'https://raw.githubusercontent.com/ussiy-buiz/ussiy-buiz.github.io/usage-cloud-state';
 const DATA_URL = `${STATE_BASE}/usage-data.enc`;
 const BOOTSTRAP_URL = `${STATE_BASE}/bootstrap.enc`;
+const BOOTSTRAP_API = 'https://api.github.com/repos/ussiy-buiz/ussiy-buiz.github.io/contents/bootstrap.enc?ref=usage-cloud-state';
 let entries = [];
 
 const settings = () => { try { return JSON.parse(localStorage.getItem(SETTINGS) || '{}'); } catch { return {}; } };
@@ -117,6 +118,22 @@ async function fetchStateText(url) {
   return text.trim() ? text : null;
 }
 
+async function fetchBootstrapText() {
+  const response = await fetch(BOOTSTRAP_API, {
+    cache: 'no-store',
+    headers: {
+      accept: 'application/vnd.github+json',
+      'x-github-api-version': '2022-11-28',
+    },
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`GitHub API HTTP ${response.status}`);
+  const payload = await response.json();
+  if (!payload?.content) return null;
+  const normalized = payload.content.replace(/\s+/g, '');
+  return new TextDecoder().decode(b64urlBytes(normalized.replace(/\+/g, '-').replace(/\//g, '_')));
+}
+
 async function decryptEnvelope(raw, secret, purpose = 'usage-view') {
   const envelope = JSON.parse(raw);
   if (envelope?.v !== 1 || envelope?.alg !== 'A256GCM') throw new Error('未対応の暗号データです');
@@ -135,7 +152,7 @@ async function refreshBootstrapState(secret) {
   const code = $('bootstrap-code');
   const link = $('bootstrap-link');
   try {
-    const raw = await fetchStateText(BOOTSTRAP_URL);
+    const raw = await fetchBootstrapText();
     if (!raw) {
       panel.hidden = true;
       return false;
