@@ -202,6 +202,7 @@ $('generate-setup').onclick = () => {
   $('generated-auth-key').value = authKey;
   $('generated-view-key').value = viewKey;
   $('view-key').value = viewKey;
+  saveSettings({ viewKey });
   $('setup-result').hidden = false;
 };
 for (const button of document.querySelectorAll('[data-copy]')) {
