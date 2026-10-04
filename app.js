@@ -7,6 +7,8 @@ const STATE_BASE = 'https://raw.githubusercontent.com/ussiy-buiz/ussiy-buiz.gith
 const DATA_URL = `${STATE_BASE}/usage-data.enc`;
 const BOOTSTRAP_URL = `${STATE_BASE}/bootstrap.enc`;
 const BOOTSTRAP_API = 'https://api.github.com/repos/ussiy-buiz/ussiy-buiz.github.io/contents/bootstrap.enc?ref=usage-cloud-state';
+const USAGE_API = 'https://api.github.com/repos/ussiy-buiz/ussiy-buiz.github.io/contents/usage-data.enc?ref=usage-cloud-state';
+const WORKFLOW_DISPATCH_API = 'https://api.github.com/repos/ussiy-buiz/ussiy-buiz.github.io/actions/workflows/usage-sync.yml/dispatches';
 let entries = [];
 
 const settings = () => { try { return JSON.parse(localStorage.getItem(SETTINGS) || '{}'); } catch { return {}; } };
@@ -118,8 +120,8 @@ async function fetchStateText(url) {
   return text.trim() ? text : null;
 }
 
-async function fetchBootstrapText() {
-  const response = await fetch(BOOTSTRAP_API, {
+async function fetchGitHubContentText(url) {
+  const response = await fetch(`${url}&t=${Date.now()}`, {
     cache: 'no-store',
     headers: {
       accept: 'application/vnd.github+json',
@@ -132,6 +134,10 @@ async function fetchBootstrapText() {
   if (!payload?.content) return null;
   const normalized = payload.content.replace(/\s+/g, '');
   return new TextDecoder().decode(b64urlBytes(normalized.replace(/\+/g, '-').replace(/\//g, '_')));
+}
+
+async function fetchBootstrapText() {
+  return fetchGitHubContentText(BOOTSTRAP_API);
 }
 
 async function decryptEnvelope(raw, secret, purpose = 'usage-view') {
@@ -183,7 +189,7 @@ async function refreshBootstrapState(secret) {
   }
 }
 
-async function sync() {
+async function readCloudState() {
   const secret = settings().viewKey || '';
   if (!secret) {
     $('sync-badge').textContent = '要設定';
@@ -195,7 +201,7 @@ async function sync() {
 
   try {
     $('sync-status').textContent = 'クラウドデータ確認中…';
-    const raw = await fetchStateText(DATA_URL);
+    const raw = await fetchGitHubContentText(USAGE_API);
     if (!raw) {
       $('sync-badge').textContent = '認証待ち';
       $('sync-status').textContent = 'まだUsageデータはありません。初回ChatGPT認証を完了してください。';
@@ -222,11 +228,78 @@ function randomKey() {
 $('save-key').onclick = () => {
   const viewKey = $('view-key').value.trim();
   if (viewKey.length < 32) { $('sync-status').textContent = '表示キーは32文字以上にしてください。'; return; }
-  saveSettings({ viewKey });
+  saveSettings({ ...settings(), viewKey });
   $('sync-status').textContent = '表示キーをこの端末に保存しました。';
-  sync();
+  readCloudState();
 };
-$('sync-now').onclick = sync;
+let refreshPromise = null;
+
+async function dispatchUsageSync() {
+  const token = settings().githubToken || '';
+  if (!token) throw new Error('GitHub Actionsトークンを保存してください');
+  const response = await fetch(WORKFLOW_DISPATCH_API, {
+    method: 'POST',
+    headers: {
+      accept: 'application/vnd.github+json',
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+      'x-github-api-version': '2022-11-28',
+    },
+    body: JSON.stringify({ ref: 'main', inputs: { mode: 'sync' } }),
+  });
+  if (response.status !== 204) {
+    let detail = '';
+    try { detail = (await response.json())?.message || ''; } catch {}
+    throw new Error(`Actions起動失敗 HTTP ${response.status}${detail ? `: ${detail}` : ''}`);
+  }
+}
+
+function latestCapturedMs() {
+  const value = entries.at(-1)?.capturedAt;
+  return value ? Date.parse(value) : 0;
+}
+
+async function refreshUsage(source = 'manual') {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = (async () => {
+    const before = latestCapturedMs();
+    $('sync-badge').textContent = '更新中';
+    $('sync-status').textContent = source === 'open' ? 'アプリ起動：最新Usageを取得中…' : '最新Usageを取得中…';
+    await dispatchUsageSync();
+
+    const deadline = Date.now() + 90_000;
+    while (Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 2500));
+      await readCloudState();
+      const after = latestCapturedMs();
+      if (after > before) {
+        $('sync-badge').textContent = '最新';
+        $('sync-status').textContent = `更新完了：${new Date().toLocaleString('ja-JP')}`;
+        return true;
+      }
+    }
+    $('sync-badge').textContent = '処理中';
+    $('sync-status').textContent = 'Actionsは起動済みです。少し待ってからもう一度更新してください。';
+    return false;
+  })().catch(error => {
+    $('sync-badge').textContent = '更新失敗';
+    $('sync-status').textContent = error.message;
+    return false;
+  }).finally(() => { refreshPromise = null; });
+  return refreshPromise;
+}
+
+$('sync-now').onclick = () => refreshUsage('manual');
+$('save-github-token').onclick = () => {
+  const githubToken = $('github-token').value.trim();
+  if (githubToken.length < 20) {
+    $('sync-status').textContent = 'GitHub Actionsトークンを入力してください。';
+    return;
+  }
+  saveSettings({ ...settings(), githubToken });
+  $('sync-status').textContent = 'ActionsトークンをこのiPhoneに保存しました。';
+};
+
 $('generate-setup').onclick = () => {
   const authKey = randomKey(), viewKey = randomKey();
   $('generated-auth-key').value = authKey;
@@ -246,8 +319,18 @@ for (const button of document.querySelectorAll('[data-copy]')) {
 
 const current = settings();
 $('view-key').value = current.viewKey || '';
+$('github-token').value = current.githubToken || '';
 try { entries = JSON.parse(localStorage.getItem(CACHE) || '[]'); } catch { entries = []; }
 render();
-sync();
-setInterval(sync, 60_000);
+readCloudState().then(() => {
+  if (settings().viewKey && settings().githubToken) refreshUsage('open');
+});
+let hiddenAt = 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    hiddenAt = Date.now();
+  } else if (hiddenAt && Date.now() - hiddenAt > 60_000 && settings().viewKey && settings().githubToken) {
+    refreshUsage('open');
+  }
+});
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});

@@ -1,8 +1,6 @@
 name: Cloud Usage Sync
 
 on:
-  schedule:
-    - cron: '*/5 * * * *'
   workflow_dispatch:
     inputs:
       mode:
@@ -48,7 +46,7 @@ jobs:
         env:
           USAGE_AUTH_KEY: ${{ secrets.USAGE_AUTH_KEY }}
           USAGE_VIEW_KEY: ${{ secrets.USAGE_VIEW_KEY }}
-          MODE: ${{ github.event_name == 'schedule' && 'sync' || inputs.mode }}
+          MODE: ${{ inputs.mode }}
         run: node scripts/usage-sync.mjs "$MODE"
       - name: Persist encrypted state branch
         run: |
