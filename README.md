@@ -1,12 +1,29 @@
-# CYPHONIC AI Usage Dashboard
+# AI Usage Dashboard - PC Free Cloud Sync
 
-iPhone Safari向けの手入力式PWA。https://ussiy-buiz.github.io/ を開き、共有メニューから「ホーム画面に追加」します。ビルド・外部依存なし。GitHub Pagesのmainブランチ / (root) から公開できます。
+`https://ussiy-buiz.github.io/` で、ChatGPT/Codex の5時間枠・週間枠をPCなしで確認するPWAです。
 
-- 残量と次回リセット日時を入力して保存。日時は端末のタイムゾーンです。
-- 実際のリセットを確認して、次回予定日時を更新し「リセットを記録」。指定した枠を100%にし、履歴から回数を集計します。自動リセットはしません。
-- 週間枠の推移は過去7日間。枯渇予測は現在のサイクル内の最初と最後の記録の平均消費速度を使います。残量の上昇、予定変更、週間リセットでサイクルを区切ります。
-- 判定：いずれか15%以下、または週間リセット前の枯渇予測なら「温存」。両方50%以上なら「GO」。それ以外、5時間以上前の記録、予定時刻経過は「計画運用」。予測・判定は手入力データに基づく目安です。
-- localStorageのみ使用。認証情報・Cookie・ChatGPT APIにはアクセスしません。CSVとJSONで全履歴を出力できます。JSON復元は全置換前に確認し、不正な形式は拒否します。
-- 保存は端末・ブラウザごとです。定期的にJSONバックアップを保存してください。初回オンライン閲覧後、Service Workerがアプリファイルをキャッシュします。
+## 仕組み
 
-ローカル確認：`python -m http.server 8000` などの静的HTTPサーバーで開いてください。PWAはlocalhostまたはHTTPSが必要です。
+1. GitHub Actions `Cloud Usage Sync` が約5分おきにOpenAIのCodex Usageエンドポイントを読みます。
+2. ChatGPT認証のrefresh tokenは `USAGE_AUTH_KEY` でAES-256-GCM暗号化し、`usage-cloud-state` ブランチの `private-auth.enc` に保存します。
+3. 利用枠履歴は別鍵 `USAGE_VIEW_KEY` で暗号化し、同ブランチの `usage-data.enc` に保存します。
+4. GitHub Pagesは `usage-data.enc` を読み、iPhone内に保存した表示キーで復号します。
+5. PC、Chrome/Edge拡張、ChatGPT Usage画面の常時起動は不要です。
+
+## 初回セットアップ（iPhoneだけでも可能）
+
+1. GitHub Pagesを開き「セットアップキーを生成」。
+2. GitHub repository Settings → Secrets and variables → Actions に以下2つを登録。
+   - `USAGE_AUTH_KEY`: 生成されたAUTHキー
+   - `USAGE_VIEW_KEY`: 生成されたVIEWキー
+3. Actions → `Cloud Usage Sync` → Run workflow → `bootstrap`。
+4. 実行中のSummaryに表示されるURL/ワンタイムコードでChatGPTへログインして許可。
+5. GitHub Pagesに戻り、VIEWキーを「表示キー」として保存。
+
+`USAGE_AUTH_KEY` はブラウザには保存しません。公開リポジトリに平文のOpenAIトークンを置かない設計です。
+
+## 注意
+
+- Usage取得はOpenAI公式Codexのオープンソース実装が利用する認証/Usage経路に合わせていますが、Web APIの仕様変更で将来修正が必要になる可能性があります。
+- GitHub Actionsのcronは厳密な5分タイマーではなく、混雑時は遅延することがあります。
+- Actionsが401/認証エラーになった場合は `bootstrap` を再実行します。
