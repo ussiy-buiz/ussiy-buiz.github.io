@@ -9,6 +9,7 @@ const TOKEN_URL = `${AUTH_BASE}/oauth/token`;
 const USAGE_URL = 'https://chatgpt.com/backend-api/wham/usage';
 const AUTH_FILE = 'private-auth.enc';
 const DATA_FILE = 'usage-data.enc';
+const BOOTSTRAP_FILE = 'bootstrap.enc';
 const MAX_ENTRIES = 4032; // 14 days at five-minute cadence.
 
 const mode = process.argv[2] || 'sync';
@@ -137,61 +138,103 @@ function saveState(auth, entry) {
   console.log(`Saved cloud usage snapshot: five=${entry.fiveRemaining}% week=${entry.weekRemaining}%`);
 }
 
-async function bootstrap() {
+async function startBootstrap() {
   requireSecrets();
   const userCode = await requestJson(USER_CODE_URL, {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ client_id: CLIENT_ID }),
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ client_id: CLIENT_ID }),
   });
   const deviceAuthId = userCode.device_auth_id;
   const code = userCode.user_code || userCode.usercode;
   const interval = Math.max(1, Number(userCode.interval) || 5);
   if (!deviceAuthId || !code) throw new Error('Device login did not return a usable code.');
 
-  const summary = process.env.GITHUB_STEP_SUMMARY;
-  const message = [
-    '## ChatGPT Usage cloud login', '',
-    '1. Open **https://auth.openai.com/codex/device** on your phone.',
-    `2. Enter this one-time code: **${code}**`,
-    '3. Approve the login. This Actions run will continue automatically.', '',
-    '> The code expires in about 15 minutes. Do not share it.',
-  ].join('\n');
-  if (summary) fs.appendFileSync(summary, message + '\n');
-  console.log('Device authorization requested. Open the workflow Summary to get the one-time code.');
+  const pending = {
+    verificationUrl: `${AUTH_BASE}/codex/device`,
+    userCode: code,
+    deviceAuthId,
+    interval,
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+  };
+  fs.writeFileSync(BOOTSTRAP_FILE, encryptJson(pending, viewSecret, 'usage-bootstrap') + '\n');
+  console.log('Device authorization created. Return to the dashboard to view the encrypted one-time code.');
+}
 
-  const deadline = Date.now() + 15 * 60 * 1000;
-  let approved;
-  while (Date.now() < deadline) {
-    const response = await fetch(DEVICE_TOKEN_URL, {
-      method: 'POST', redirect: 'error', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ device_auth_id: deviceAuthId, user_code: code }),
-    });
-    if (response.ok) { approved = await response.json(); break; }
-    if (![403, 404].includes(response.status)) throw new Error(`Device authorization returned HTTP ${response.status}`);
-    await new Promise(resolve => setTimeout(resolve, interval * 1000));
+async function tryCompleteBootstrap() {
+  if (!fs.existsSync(BOOTSTRAP_FILE)) return false;
+  requireSecrets();
+
+  let pending;
+  try {
+    pending = decryptJson(fs.readFileSync(BOOTSTRAP_FILE, 'utf8'), viewSecret, 'usage-bootstrap');
+  } catch {
+    throw new Error('Could not decrypt bootstrap.enc. Check USAGE_VIEW_KEY.');
   }
-  if (!approved) throw new Error('Device authorization timed out. Run bootstrap again.');
 
+  if (!pending?.deviceAuthId || !pending?.userCode) {
+    throw new Error('Encrypted bootstrap state is incomplete.');
+  }
+  if (Date.parse(pending.expiresAt || '') <= Date.now()) {
+    fs.rmSync(BOOTSTRAP_FILE, { force: true });
+    console.log('Pending ChatGPT device authorization expired. Run bootstrap again.');
+    return false;
+  }
+
+  const response = await fetch(DEVICE_TOKEN_URL, {
+    method: 'POST',
+    redirect: 'error',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      device_auth_id: pending.deviceAuthId,
+      user_code: pending.userCode,
+    }),
+  });
+
+  if ([403, 404].includes(response.status)) {
+    console.log('ChatGPT device authorization is still waiting for approval.');
+    return false;
+  }
+  if (!response.ok) throw new Error(`Device authorization returned HTTP ${response.status}`);
+
+  const approved = await response.json();
   const form = new URLSearchParams({
-    grant_type: 'authorization_code', client_id: CLIENT_ID,
+    grant_type: 'authorization_code',
+    client_id: CLIENT_ID,
     code: approved.authorization_code,
     redirect_uri: `${AUTH_BASE}/deviceauth/callback`,
     code_verifier: approved.code_verifier,
   });
   const tokens = await requestJson(TOKEN_URL, {
-    method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: form,
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: form,
   });
-  if (!tokens.access_token || !tokens.refresh_token) throw new Error('Login token exchange was incomplete.');
+  if (!tokens.access_token || !tokens.refresh_token) {
+    throw new Error('Login token exchange was incomplete.');
+  }
+
   const accountId = accountIdFromIdToken(tokens.id_token);
   const usage = normalizeUsage(await fetchUsage(tokens.access_token, accountId));
-  saveState({ refreshToken: tokens.refresh_token, accountId, updatedAt: new Date().toISOString() }, usage);
+  saveState(
+    { refreshToken: tokens.refresh_token, accountId, updatedAt: new Date().toISOString() },
+    usage,
+  );
+  fs.rmSync(BOOTSTRAP_FILE, { force: true });
+  console.log('ChatGPT cloud authorization completed successfully.');
+  return true;
 }
 
 async function sync() {
-  if (!fs.existsSync(AUTH_FILE)) {
-    console.log('Cloud sync is not bootstrapped yet; skipping scheduled run.');
-    return;
-  }
   requireSecrets();
+  if (!fs.existsSync(AUTH_FILE)) {
+    const completed = await tryCompleteBootstrap();
+    if (!completed) {
+      console.log('Cloud sync is waiting for initial ChatGPT authorization.');
+      return;
+    }
+  }
   let auth;
   try { auth = decryptJson(fs.readFileSync(AUTH_FILE, 'utf8'), authSecret, 'usage-auth'); }
   catch { throw new Error('Could not decrypt private-auth.enc. Check USAGE_AUTH_KEY.'); }
@@ -205,7 +248,7 @@ async function sync() {
 }
 
 try {
-  if (mode === 'bootstrap') await bootstrap();
+  if (mode === 'bootstrap') await startBootstrap();
   else if (mode === 'sync') await sync();
   else throw new Error(`Unknown mode: ${mode}`);
 } catch (error) {
