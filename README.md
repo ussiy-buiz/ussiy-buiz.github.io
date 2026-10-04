@@ -16,9 +16,10 @@
 2. GitHub repository Settings → Secrets and variables → Actions に以下2つを登録。
    - `USAGE_AUTH_KEY`: 生成されたAUTHキー
    - `USAGE_VIEW_KEY`: 生成されたVIEWキー
-3. Actions → `Cloud Usage Sync` → Run workflow → `bootstrap`。
-4. 実行中のSummaryに表示されるURL/ワンタイムコードでChatGPTへログインして許可。
-5. GitHub Pagesに戻り、VIEWキーを「表示キー」として保存。
+3. GitHub Pagesに戻り、VIEWキーを「表示キー」として保存。
+4. Actions → `Cloud Usage Sync` → Run workflow → `bootstrap`。
+5. GitHub Pagesに戻ると、暗号化されたbootstrap状態からワンタイムコードが表示されるので、表示されたリンクからChatGPTで承認。
+6. 次回の定期同期（通常5分以内）が認証完了を検出し、以後は自動でUsageを取得。
 
 `USAGE_AUTH_KEY` はブラウザには保存しません。公開リポジトリに平文のOpenAIトークンを置かない設計です。
 
