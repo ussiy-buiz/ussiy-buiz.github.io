@@ -36,9 +36,13 @@ jobs:
       - name: Restore encrypted state
         run: |
           if git fetch origin usage-cloud-state:refs/remotes/origin/usage-cloud-state 2>/dev/null; then
-            git show origin/usage-cloud-state:private-auth.enc > private-auth.enc 2>/dev/null || true
-            git show origin/usage-cloud-state:usage-data.enc > usage-data.enc 2>/dev/null || true
-            git show origin/usage-cloud-state:bootstrap.enc > bootstrap.enc 2>/dev/null || true
+            for file in private-auth.enc usage-data.enc bootstrap.enc; do
+              if git show "origin/usage-cloud-state:$file" > "$file.tmp" 2>/dev/null && [ -s "$file.tmp" ]; then
+                mv "$file.tmp" "$file"
+              else
+                rm -f "$file.tmp" "$file"
+              fi
+            done
           fi
       - name: Fetch ChatGPT usage
         env:
@@ -48,14 +52,14 @@ jobs:
         run: node scripts/usage-sync.mjs "$MODE"
       - name: Persist encrypted state branch
         run: |
-          if [ ! -f private-auth.enc ] && [ ! -f usage-data.enc ] && [ ! -f bootstrap.enc ]; then
+          if [ ! -s private-auth.enc ] && [ ! -s usage-data.enc ] && [ ! -s bootstrap.enc ]; then
             echo "Cloud sync is not configured yet."
             exit 0
           fi
           mkdir -p /tmp/usage-cloud-state
-          [ -f private-auth.enc ] && cp private-auth.enc /tmp/usage-cloud-state/
-          [ -f usage-data.enc ] && cp usage-data.enc /tmp/usage-cloud-state/
-          [ -f bootstrap.enc ] && cp bootstrap.enc /tmp/usage-cloud-state/
+          [ -s private-auth.enc ] && cp private-auth.enc /tmp/usage-cloud-state/
+          [ -s usage-data.enc ] && cp usage-data.enc /tmp/usage-cloud-state/
+          [ -s bootstrap.enc ] && cp bootstrap.enc /tmp/usage-cloud-state/
           rm -f private-auth.enc usage-data.enc bootstrap.enc
           if git show-ref --verify --quiet refs/remotes/origin/usage-cloud-state; then
             git switch --force-create usage-cloud-state origin/usage-cloud-state
