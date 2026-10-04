@@ -30,7 +30,7 @@ jobs:
         with:
           persist-credentials: true
           fetch-depth: 1
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
       - name: Restore encrypted state
@@ -54,6 +54,7 @@ jobs:
           mkdir -p /tmp/usage-cloud-state
           [ -f private-auth.enc ] && cp private-auth.enc /tmp/usage-cloud-state/
           [ -f usage-data.enc ] && cp usage-data.enc /tmp/usage-cloud-state/
+          rm -f private-auth.enc usage-data.enc
           if git show-ref --verify --quiet refs/remotes/origin/usage-cloud-state; then
             git switch --force-create usage-cloud-state origin/usage-cloud-state
           else
