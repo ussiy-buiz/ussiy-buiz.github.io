@@ -38,6 +38,7 @@ jobs:
           if git fetch origin usage-cloud-state:refs/remotes/origin/usage-cloud-state 2>/dev/null; then
             git show origin/usage-cloud-state:private-auth.enc > private-auth.enc 2>/dev/null || true
             git show origin/usage-cloud-state:usage-data.enc > usage-data.enc 2>/dev/null || true
+            git show origin/usage-cloud-state:bootstrap.enc > bootstrap.enc 2>/dev/null || true
           fi
       - name: Fetch ChatGPT usage
         env:
@@ -47,14 +48,15 @@ jobs:
         run: node scripts/usage-sync.mjs "$MODE"
       - name: Persist encrypted state branch
         run: |
-          if [ ! -f private-auth.enc ] && [ ! -f usage-data.enc ]; then
+          if [ ! -f private-auth.enc ] && [ ! -f usage-data.enc ] && [ ! -f bootstrap.enc ]; then
             echo "Cloud sync is not configured yet."
             exit 0
           fi
           mkdir -p /tmp/usage-cloud-state
           [ -f private-auth.enc ] && cp private-auth.enc /tmp/usage-cloud-state/
           [ -f usage-data.enc ] && cp usage-data.enc /tmp/usage-cloud-state/
-          rm -f private-auth.enc usage-data.enc
+          [ -f bootstrap.enc ] && cp bootstrap.enc /tmp/usage-cloud-state/
+          rm -f private-auth.enc usage-data.enc bootstrap.enc
           if git show-ref --verify --quiet refs/remotes/origin/usage-cloud-state; then
             git switch --force-create usage-cloud-state origin/usage-cloud-state
           else
@@ -63,7 +65,7 @@ jobs:
           git rm -rf . >/dev/null 2>&1 || true
           git clean -fdx >/dev/null 2>&1 || true
           cp /tmp/usage-cloud-state/* .
-          git add private-auth.enc usage-data.enc 2>/dev/null || true
+          git add -A
           if git diff --cached --quiet; then
             echo "No state change to commit."
             exit 0
